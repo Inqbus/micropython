@@ -33,6 +33,8 @@
 
 #include "ports/stm32/font_petme128_8x8.h"
 
+#define MICROPY_PY_FRAMEBUF_FAST 1
+
 typedef struct _mp_obj_framebuf_t {
     mp_obj_base_t base;
     mp_obj_t buf_obj; // need to store this to prevent GC from reclaiming buf
@@ -64,6 +66,11 @@ typedef struct _mp_framebuf_p_t {
 #define FRAMEBUF_MHLSB    (3)
 #define FRAMEBUF_MHMSB    (4)
 
+#if MICROPY_PY_FRAMEBUF_FAST
+#define FRAMEBUF_MHLSB_FAST    (7)
+#define FRAMEBUF_MHMSB_FAST    (8)
+#endif //MICROPY_PY_FRAMEBUF_FAST
+
 // Functions for MHLSB and MHMSB
 
 STATIC void mono_horiz_setpixel(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, uint32_t col) {
@@ -78,6 +85,85 @@ STATIC uint32_t mono_horiz_getpixel(const mp_obj_framebuf_t *fb, unsigned int x,
     return (((uint8_t *)fb->buf)[index] >> (offset)) & 0x01;
 }
 
+#if MICROPY_PY_FRAMEBUF_FAST
+
+STATIC void fill_border(uint8_t *b, const unsigned int height, unsigned int advance, unsigned int mask, unsigned int col ) {
+    // Fills the border of a rectangle not placed on byte boundaries.
+
+    unsigned int hh = height;
+    uint8_t *bb = b;
+    // if we have to add pixels we use the OR operator
+    if (col > 0) {
+        while (hh--) {
+            *bb = *bb | mask;
+            bb += advance;
+        }
+    } else { // if we have to erase pixels we use the AND operator and the inverse mask
+        while (hh--) {
+            *bb = *bb & ~mask;
+            bb += advance;
+        }
+    }
+}
+
+STATIC void mono_horiz_fill_rect_fast(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, unsigned int w, unsigned int h, uint32_t col) {
+    unsigned int reverse = fb->format == FRAMEBUF_MHMSB;    // are the bytes are in reverse order
+    unsigned int advance = fb->stride >> 3;                 // calculate the stride in bytes
+    unsigned int x_div8 = x >> 3;                           // x start in bytes
+
+//    mp_printf(&mp_plat_print,"fillrect(x=%d, y=%d, w=%d, h=%d,)\n", x, y, w, h);
+
+    uint8_t *b_start = &((uint8_t *)fb->buf)[x_div8 + y * advance]; // pointer to the byte at (x, y)
+    // Handle the x start border offset
+    unsigned int x_mod8 = x & 7;                            // x start border offset
+    // do we have an start offset?
+    if (x_mod8 > 0) { //we have a x modulo 8 start offset
+//        mp_printf(&mp_plat_print,"left border\n");
+//        mp_printf(&mp_plat_print,"b_start=%d\n", b_start);
+
+        // calculate the bit mask for the starting border byte
+        unsigned int start_mask = reverse ?  (( 1 << (7 - x_mod8 + 1)) - 1) << x_mod8 : (1 << (7 - x_mod8 + 1)) - 1 ;
+        // Apply the the mask to the start border
+        fill_border(b_start, h, advance, start_mask, col);
+        // Move fill start to the next byte since the first byte is already taken care of
+        x_div8++;
+        b_start++;
+//        mp_printf(&mp_plat_print,"b_start=%d\n", b_start);
+    }
+    // Handle the x end border offset
+    unsigned int x_end_div8 = (x + w) >> 3 ;                // x end byte
+    unsigned int x_end_mod8 = (x + w) & 7 ;                 // x end border offset
+
+    // get a pointer to the byte at (x + w, y)
+    uint8_t *b_end = &((uint8_t *)fb->buf)[x_end_div8 + y * advance] ;
+
+    // do we have an end offset?
+    if (x_end_mod8 > 0) {//we have a x modulo 8 end offset
+//        mp_printf(&mp_plat_print,"right border\n");
+        // calculate the bit mask for the end border byte
+        unsigned int end_mask = reverse ? (1 << (x_end_mod8 + 1)) - 1: (( 1 << (x_end_mod8 + 1)) - 1) << (7 - x_end_mod8) ;
+        // Apply the the mask to the end border
+        fill_border(b_end, h, advance, end_mask, col);
+        // Move fill end to the previous byte since the last byte is taken care of
+        x_end_div8-- ;
+    }
+//    mp_printf(&mp_plat_print,"x_end_div8=%d x_div8=%d h=%d\n", x_end_div8, x_div8, h);
+    int bytes2fill =  x_end_div8 - x_div8 + 1;             // the length without borders in bytes
+    if (bytes2fill > 0 ) {
+        unsigned int col_byte = col ? 255 : 0 ;                 // fill pattern full byte or nul byte
+        while (h--) {
+            unsigned int b = bytes2fill;
+            while (b--) {
+                *b_start = col_byte;
+                b_start++;
+            }
+            b_start += advance - bytes2fill ;
+        }
+    }
+}
+
+#endif // MICROPY_PY_FRAMEBUF_FAST
+//#if !MICROPY_PY_FRAMEBUF_FAST
 STATIC void mono_horiz_fill_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, unsigned int w, unsigned int h, uint32_t col) {
     unsigned int reverse = fb->format == FRAMEBUF_MHMSB;
     unsigned int advance = fb->stride >> 3;
@@ -91,7 +177,7 @@ STATIC void mono_horiz_fill_rect(const mp_obj_framebuf_t *fb, unsigned int x, un
         ++x;
     }
 }
-
+//#endif //!MICROPY_PY_FRAMEBUF_FAST
 // Functions for MVLSB format
 
 STATIC void mvlsb_setpixel(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, uint32_t col) {
@@ -236,8 +322,14 @@ STATIC mp_framebuf_p_t formats[] = {
     [FRAMEBUF_GS2_HMSB] = {gs2_hmsb_setpixel, gs2_hmsb_getpixel, gs2_hmsb_fill_rect},
     [FRAMEBUF_GS4_HMSB] = {gs4_hmsb_setpixel, gs4_hmsb_getpixel, gs4_hmsb_fill_rect},
     [FRAMEBUF_GS8] = {gs8_setpixel, gs8_getpixel, gs8_fill_rect},
+//#if !MICROPY_PY_FRAMEBUF_FAST
     [FRAMEBUF_MHLSB] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect},
     [FRAMEBUF_MHMSB] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect},
+//#endif // !MICROPY_PY_FRAMEBUF_FAST
+#if MICROPY_PY_FRAMEBUF_FAST
+    [FRAMEBUF_MHLSB_FAST] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect_fast},
+    [FRAMEBUF_MHMSB_FAST] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect_fast},
+#endif //MICROPY_PY_FRAMEBUF_FAST
 };
 
 static inline void setpixel(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, uint32_t col) {
@@ -287,6 +379,10 @@ STATIC mp_obj_t framebuf_make_new(const mp_obj_type_t *type, size_t n_args, size
         case FRAMEBUF_MVLSB:
         case FRAMEBUF_RGB565:
             break;
+#if MICROPY_PY_FRAMEBUF_FAST
+        case FRAMEBUF_MHLSB_FAST:
+        case FRAMEBUF_MHMSB_FAST:
+#endif // MICROPY_PY_FRAMEBUF_FAST
         case FRAMEBUF_MHLSB:
         case FRAMEBUF_MHMSB:
             o->stride = (o->stride + 7) & ~7;
@@ -661,6 +757,10 @@ STATIC const mp_rom_map_elem_t framebuf_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_GS8), MP_ROM_INT(FRAMEBUF_GS8) },
     { MP_ROM_QSTR(MP_QSTR_MONO_HLSB), MP_ROM_INT(FRAMEBUF_MHLSB) },
     { MP_ROM_QSTR(MP_QSTR_MONO_HMSB), MP_ROM_INT(FRAMEBUF_MHMSB) },
+#if MICROPY_PY_FRAMEBUF_FAST
+    { MP_ROM_QSTR(MP_QSTR_MONO_HLSB_FAST), MP_ROM_INT(FRAMEBUF_MHLSB_FAST) },
+    { MP_ROM_QSTR(MP_QSTR_MONO_HMSB_FAST), MP_ROM_INT(FRAMEBUF_MHMSB_FAST) },
+#endif // MICROPY_PY_FRAMEBUF_FAST
 };
 
 STATIC MP_DEFINE_CONST_DICT(framebuf_module_globals, framebuf_module_globals_table);
