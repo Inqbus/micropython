@@ -48,11 +48,13 @@ STATIC const mp_obj_type_t mp_type_framebuf;
 typedef void (*setpixel_t)(const mp_obj_framebuf_t *, unsigned int, unsigned int, uint32_t);
 typedef uint32_t (*getpixel_t)(const mp_obj_framebuf_t *, unsigned int, unsigned int);
 typedef void (*fill_rect_t)(const mp_obj_framebuf_t *, unsigned int, unsigned int, unsigned int, unsigned int, uint32_t);
+typedef mp_obj_t (*get_rect_t)(const mp_obj_framebuf_t *, unsigned int, unsigned int, unsigned int, unsigned int);
 
 typedef struct _mp_framebuf_p_t {
     setpixel_t setpixel;
     getpixel_t getpixel;
     fill_rect_t fill_rect;
+    get_rect_t get_rect;
 } mp_framebuf_p_t;
 
 // constants for formats
@@ -91,6 +93,45 @@ STATIC void mono_horiz_fill_rect(const mp_obj_framebuf_t *fb, unsigned int x, un
         ++x;
     }
 }
+
+STATIC mp_obj_t mono_horiz_get_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, unsigned int w, unsigned int h) {
+    /*
+        Return the raw bytes of a rectangle given by its x ,y ,w ,h definition.
+        Caution! Bytes overlapping the left/right border will transferred completely.
+        The rectangle will be returned in the same order the buffer is aligned.
+    */
+    // get the width of the returned rect in bytes, including the partial striven bytes at the left/right border
+    unsigned int w_bytes = ((x + w - 1) >> 3) - (x >> 3) + 1;
+
+    // advance is corrected by w_bytes since the shift into the next line will happen at the end of the line.
+    unsigned int advance = fb->stride >> 3  - w_bytes;
+//    mp_printf(&mp_plat_print,"w_bytes=%d\n", w_bytes);
+    // The output buffer
+    vstr_t vstr;
+    // set length of output buffer to w_bytes x height
+    vstr_init_len(&vstr, w_bytes * h);
+    // get the first byte of the rectangle in the frame buffer
+    uint8_t *b = &((uint8_t *)fb->buf)[(x >> 3) + y * advance];
+    // get uint_8 pointer for the target buffer vstr.buf
+    uint8_t *t = (uint8_t *)vstr.buf;
+    while (h--) { // for each line
+//        mp_printf(&mp_plat_print,"h=%d\n", h);
+        unsigned int ww = w_bytes;
+        while (ww--) { // for each byte in the line
+//            mp_printf(&mp_plat_print,"ww=%d\n", ww);
+            *t = *b; // copy the byte of the buffer into the output buffer
+//            mp_printf(&mp_plat_print,"buf=%d\n", *b);
+            // move both buffer pointers to next byte
+            t++;
+            b++;
+        }
+        // move buffer pointer to next line. Backspace is already taken care for in definition of advance
+        b += advance;
+    }
+    // return an MP Bytes instance
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
 
 // Functions for MVLSB format
 
@@ -231,13 +272,13 @@ STATIC void gs8_fill_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsigned 
 }
 
 STATIC mp_framebuf_p_t formats[] = {
-    [FRAMEBUF_MVLSB] = {mvlsb_setpixel, mvlsb_getpixel, mvlsb_fill_rect},
-    [FRAMEBUF_RGB565] = {rgb565_setpixel, rgb565_getpixel, rgb565_fill_rect},
-    [FRAMEBUF_GS2_HMSB] = {gs2_hmsb_setpixel, gs2_hmsb_getpixel, gs2_hmsb_fill_rect},
-    [FRAMEBUF_GS4_HMSB] = {gs4_hmsb_setpixel, gs4_hmsb_getpixel, gs4_hmsb_fill_rect},
-    [FRAMEBUF_GS8] = {gs8_setpixel, gs8_getpixel, gs8_fill_rect},
-    [FRAMEBUF_MHLSB] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect},
-    [FRAMEBUF_MHMSB] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect},
+    [FRAMEBUF_MVLSB] = {mvlsb_setpixel, mvlsb_getpixel, mvlsb_fill_rect, 0},
+    [FRAMEBUF_RGB565] = {rgb565_setpixel, rgb565_getpixel, rgb565_fill_rect, 0},
+    [FRAMEBUF_GS2_HMSB] = {gs2_hmsb_setpixel, gs2_hmsb_getpixel, gs2_hmsb_fill_rect, 0},
+    [FRAMEBUF_GS4_HMSB] = {gs4_hmsb_setpixel, gs4_hmsb_getpixel, gs4_hmsb_fill_rect, 0},
+    [FRAMEBUF_GS8] = {gs8_setpixel, gs8_getpixel, gs8_fill_rect, 0},
+    [FRAMEBUF_MHLSB] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect, mono_horiz_get_rect},
+    [FRAMEBUF_MHMSB] = {mono_horiz_setpixel, mono_horiz_getpixel, mono_horiz_fill_rect, mono_horiz_get_rect},
 };
 
 static inline void setpixel(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, uint32_t col) {
@@ -261,6 +302,21 @@ STATIC void fill_rect(const mp_obj_framebuf_t *fb, int x, int y, int w, int h, u
     y = MAX(y, 0);
 
     formats[fb->format].fill_rect(fb, x, y, xend - x, yend - y, col);
+}
+
+STATIC mp_obj_t get_rect(const mp_obj_framebuf_t *fb, int x, int y, int w, int h) {
+    if (h < 1 || w < 1 || x + w <= 0 || y + h <= 0 || y >= fb->height || x >= fb->width) {
+        // No operation needed.
+        return mp_const_none;
+    }
+
+    // clip to the framebuffer
+    int xend = MIN(fb->width, x + w);
+    int yend = MIN(fb->height, y + h);
+    x = MAX(x, 0);
+    y = MAX(y, 0);
+
+    return formats[fb->format].get_rect(fb, x, y, xend - x, yend - y);
 }
 
 STATIC mp_obj_t framebuf_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
@@ -337,7 +393,24 @@ STATIC mp_obj_t framebuf_fill_rect(size_t n_args, const mp_obj_t *args) {
 
     return mp_const_none;
 }
+
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_fill_rect_obj, 6, 6, framebuf_fill_rect);
+
+STATIC mp_obj_t framebuf_get_rect(size_t n_args, const mp_obj_t *args) {
+    (void)n_args;
+
+    mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(args[0]);
+    mp_int_t x = mp_obj_get_int(args[1]);
+    mp_int_t y = mp_obj_get_int(args[2]);
+    mp_int_t width = mp_obj_get_int(args[3]);
+    mp_int_t height = mp_obj_get_int(args[4]);
+
+    mp_obj_t result = get_rect(self, x, y, width, height);
+
+    return result;
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_get_rect_obj, 5, 5, framebuf_get_rect);
 
 STATIC mp_obj_t framebuf_pixel(size_t n_args, const mp_obj_t *args) {
     mp_obj_framebuf_t *self = MP_OBJ_TO_PTR(args[0]);
@@ -606,6 +679,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(framebuf_text_obj, 4, 5, framebuf_tex
 STATIC const mp_rom_map_elem_t framebuf_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_fill), MP_ROM_PTR(&framebuf_fill_obj) },
     { MP_ROM_QSTR(MP_QSTR_fill_rect), MP_ROM_PTR(&framebuf_fill_rect_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_rect), MP_ROM_PTR(&framebuf_get_rect_obj) },
     { MP_ROM_QSTR(MP_QSTR_pixel), MP_ROM_PTR(&framebuf_pixel_obj) },
     { MP_ROM_QSTR(MP_QSTR_hline), MP_ROM_PTR(&framebuf_hline_obj) },
     { MP_ROM_QSTR(MP_QSTR_vline), MP_ROM_PTR(&framebuf_vline_obj) },
