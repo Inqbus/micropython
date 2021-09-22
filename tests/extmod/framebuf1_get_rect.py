@@ -4,24 +4,19 @@ try:
 except ImportError:
     print("SKIP")
     raise SystemExit
-import sys
 
-# test if framebuffer is compiled with the get_rect function
+# test if framebuf is compiled with the get_rect function
 if not 'get_rect' in dir(framebuf.FrameBuffer):
     print("SKIP")
     raise SystemExit
 
-
-import sys
-
-
 DEBUG = False
 
-# Basic maximal dimension for the framebuffer used
+# Maximal dimension for the framebuffer used
 WIDTH = 13
 HEIGHT = 19
 
-# Bad asumed values for x and y coordinates and width/height
+# Bad assumed values for x and y coordinates and width/height
 BAD_X = [-8, -7, -1]
 BAD_Y = [-8, -7, -1]
 BAD_RANGE_WH = [-8, -7, -1, 0]
@@ -175,6 +170,10 @@ def check_buf_size(map_key):
 
 
 for map_key in MAPS:
+    print('#'*50)
+    print(MAPS[map_key])
+    print('#'*50)
+    print()
 
     # Testing impossible coordinates
     check_range_overflow(map_key)

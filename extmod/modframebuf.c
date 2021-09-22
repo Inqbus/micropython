@@ -100,27 +100,34 @@ STATIC mp_obj_t mono_horiz_get_rect(const mp_obj_framebuf_t *fb, unsigned int x,
         Caution! Bytes overlapping the left/right border will transferred completely.
         The rectangle will be returned in the same order the buffer is aligned.
     */
+
+    mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
+
     // get the width of the returned rect in bytes, including the partial striven bytes at the left/right border
     unsigned int w_bytes = ((x + w - 1) >> 3) - (x >> 3) + 1;
+    mp_printf(&mp_plat_print,"w_bytes=%d\n", w_bytes);
 
     // advance is corrected by w_bytes since the shift into the next line will happen at the end of the line.
-    unsigned int advance = fb->stride >> 3  - w_bytes;
-//    mp_printf(&mp_plat_print,"w_bytes=%d\n", w_bytes);
+    unsigned int stride_bytes = (fb->stride >> 3);
+    unsigned int advance = stride_bytes - w_bytes;
+
+    mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
+    mp_printf(&mp_plat_print,"advance=%d\n", advance);
     // The output buffer
     vstr_t vstr;
     // set length of output buffer to w_bytes x height
     vstr_init_len(&vstr, w_bytes * h);
     // get the first byte of the rectangle in the frame buffer
-    uint8_t *b = &((uint8_t *)fb->buf)[(x >> 3) + y * advance];
+    uint8_t *b = &((uint8_t *)fb->buf)[(x >> 3) + y * stride_bytes];
     // get uint_8 pointer for the target buffer vstr.buf
     uint8_t *t = (uint8_t *)vstr.buf;
     while (h--) { // for each line
-//        mp_printf(&mp_plat_print,"h=%d\n", h);
+        mp_printf(&mp_plat_print,"h=%d\n", h);
         unsigned int ww = w_bytes;
         while (ww--) { // for each byte in the line
-//            mp_printf(&mp_plat_print,"ww=%d\n", ww);
+            mp_printf(&mp_plat_print,"ww=%d\n", ww);
             *t = *b; // copy the byte of the buffer into the output buffer
-//            mp_printf(&mp_plat_print,"buf=%d\n", *b);
+            mp_printf(&mp_plat_print,"buf=%d\n", *b);
             // move both buffer pointers to next byte
             t++;
             b++;
@@ -305,6 +312,8 @@ STATIC void fill_rect(const mp_obj_framebuf_t *fb, int x, int y, int w, int h, u
 }
 
 STATIC mp_obj_t get_rect(const mp_obj_framebuf_t *fb, int x, int y, int w, int h) {
+    mp_printf(&mp_plat_print,"get_rect_init=%d %d %d %d\n", x, y, w, h);
+
     if (h < 1 || w < 1 || x + w <= 0 || y + h <= 0 || y >= fb->height || x >= fb->width) {
         // No operation needed.
         return mp_const_none;
