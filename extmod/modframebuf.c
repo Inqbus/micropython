@@ -101,18 +101,18 @@ STATIC mp_obj_t mono_horiz_get_rect(const mp_obj_framebuf_t *fb, unsigned int x,
         The rectangle will be returned in the same order the buffer is aligned.
     */
 
-    mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
+    // mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
 
     // get the width of the returned rect in bytes, including the partial striven bytes at the left/right border
     unsigned int w_bytes = ((x + w - 1) >> 3) - (x >> 3) + 1;
-    mp_printf(&mp_plat_print,"w_bytes=%d\n", w_bytes);
+    // mp_printf(&mp_plat_print,"w_bytes=%d\n", w_bytes);
 
     // advance is corrected by w_bytes since the shift into the next line will happen at the end of the line.
     unsigned int stride_bytes = (fb->stride >> 3);
     unsigned int advance = stride_bytes - w_bytes;
 
-    mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
-    mp_printf(&mp_plat_print,"advance=%d\n", advance);
+    // mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
+    // mp_printf(&mp_plat_print,"advance=%d\n", advance);
     // The output buffer
     vstr_t vstr;
     // set length of output buffer to w_bytes x height
@@ -122,12 +122,12 @@ STATIC mp_obj_t mono_horiz_get_rect(const mp_obj_framebuf_t *fb, unsigned int x,
     // get uint_8 pointer for the target buffer vstr.buf
     uint8_t *t = (uint8_t *)vstr.buf;
     while (h--) { // for each line
-        mp_printf(&mp_plat_print,"h=%d\n", h);
+        // mp_printf(&mp_plat_print,"h=%d\n", h);
         unsigned int ww = w_bytes;
         while (ww--) { // for each byte in the line
-            mp_printf(&mp_plat_print,"ww=%d\n", ww);
+            // mp_printf(&mp_plat_print,"ww=%d\n", ww);
             *t = *b; // copy the byte of the buffer into the output buffer
-            mp_printf(&mp_plat_print,"buf=%d\n", *b);
+            // mp_printf(&mp_plat_print,"buf=%d\n", *b);
             // move both buffer pointers to next byte
             t++;
             b++;
@@ -163,6 +163,53 @@ STATIC void mvlsb_fill_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsigne
         ++y;
     }
 }
+
+
+STATIC mp_obj_t mvlsb_get_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsigned int y, unsigned int w, unsigned int h) {
+    /*
+        Return the raw bytes of a rectangle given by its x ,y ,w ,h definition.
+        Caution! Bytes overlapping the top/bottom border will transferred completely.
+        The rectangle will be returned in the same order the buffer is aligned.
+    */
+
+    // mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
+
+    // get the height of the returned rect in bytes, including the partial striven bytes at the top/bottom border
+    unsigned int h_bytes = ((y + h - 1) >> 3) - (y >> 3) + 1;
+    // mp_printf(&mp_plat_print,"h_bytes=%d\n", h_bytes);
+
+    // advance is corrected by w_bytes since the shift into the next line will happen at the end of the line.
+    unsigned int stride_bytes = (fb->stride >> 3);
+    unsigned int advance = stride_bytes - w;
+
+    // mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
+    // mp_printf(&mp_plat_print,"advance=%d\n", advance);
+    // The output buffer
+    vstr_t vstr;
+    // set length of output buffer to h_bytes x width
+    vstr_init_len(&vstr, h_bytes * w);
+    // get the first byte of the rectangle in the frame buffer
+    uint8_t *b = &((uint8_t *)fb->buf)[(y >> 3) * stride_bytes + x];
+    // get uint_8 pointer for the target buffer vstr.buf
+    uint8_t *t = (uint8_t *)vstr.buf;
+    while (h_bytes--) { // for 8 lines in parallel
+        // mp_printf(&mp_plat_print,"h=%d\n", h_bytes);
+        unsigned int ww = w;
+        while (ww--) { // for each byte in the line
+            // mp_printf(&mp_plat_print,"ww=%d\n", ww);
+            *t = *b; // copy the byte of the buffer into the output buffer
+            // mp_printf(&mp_plat_print,"buf=%d\n", *b);
+            // move both buffer pointers to next byte
+            t++;
+            b++;
+        }
+        // move buffer pointer to next line. Backspace is already taken care for in definition of advance
+        b += advance;
+    }
+    // return an MP Bytes instance
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+}
+
 
 // Functions for RGB565 format
 
@@ -279,7 +326,7 @@ STATIC void gs8_fill_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsigned 
 }
 
 STATIC mp_framebuf_p_t formats[] = {
-    [FRAMEBUF_MVLSB] = {mvlsb_setpixel, mvlsb_getpixel, mvlsb_fill_rect, 0},
+    [FRAMEBUF_MVLSB] = {mvlsb_setpixel, mvlsb_getpixel, mvlsb_fill_rect, mvlsb_get_rect},
     [FRAMEBUF_RGB565] = {rgb565_setpixel, rgb565_getpixel, rgb565_fill_rect, 0},
     [FRAMEBUF_GS2_HMSB] = {gs2_hmsb_setpixel, gs2_hmsb_getpixel, gs2_hmsb_fill_rect, 0},
     [FRAMEBUF_GS4_HMSB] = {gs4_hmsb_setpixel, gs4_hmsb_getpixel, gs4_hmsb_fill_rect, 0},

@@ -10,7 +10,7 @@ if not 'get_rect' in dir(framebuf.FrameBuffer):
     print("SKIP")
     raise SystemExit
 
-DEBUG = False
+DEBUG = True
 
 # Maximal dimension for the framebuffer used
 WIDTH = 13
@@ -31,6 +31,7 @@ GOOD_Y_RANGE = [0] + GOOD_HEIGHT_RANGE
 
 # The mappings tested
 MAPS = {
+    framebuf.MONO_VLSB: "MONO_VLSB",
     framebuf.MONO_HLSB: "MONO_HLSB",
     framebuf.MONO_HMSB: "MONO_HMSB",
 }
@@ -80,11 +81,11 @@ def check_range_overflow(map_key):
             raise Exception
             
 
-def get_rect(framebuffer, buffer, x, y, w, h, stride=None):
+def h_get_rect(framebuffer, buffer, x, y, w, h, stride=None):
     """
-    Reimplementation of FRameBuffer.get_rect in Python.
+    Reimplementation of FrameBuffer.get_rect for mono horizontal in Python.
     """
-    dprint('py_get_rect init x:{} y:{} w:{} h:{}'.format(x, y, w, h))
+    dprint('py_h_get_rect init x:{} y:{} w:{} h:{}'.format(x, y, w, h))
 
     if (h < 1) or (w < 1) or (x + w <= 0) or (y + h <= 0) or (x >= framebuffer.width) or (y >= framebuffer.height):
         return None
@@ -121,6 +122,47 @@ def get_rect(framebuffer, buffer, x, y, w, h, stride=None):
         start_byte += advance
     return vstr
 
+def v_get_rect(framebuffer, buffer, x, y, w, h, stride=None):
+    """
+    Reimplementation of FrameBuffer.get_rect for mono vertical in Python.
+    """
+    dprint('py_v_get_rect init x:{} y:{} w:{} h:{}'.format(x, y, w, h))
+
+    if (h < 1) or (w < 1) or (x + w <= 0) or (y + h <= 0) or (x >= framebuffer.width) or (y >= framebuffer.height):
+        return None
+
+    dprint('buffer:{}'.format(buffer))
+    xend = min(framebuffer.width, x + w)
+    yend = min(framebuffer.height, y + h)
+    x = max(x, 0)
+    y = max(y, 0)
+
+    w = xend - x
+    h = yend - y
+
+    dprint('py_get_rect clipped x:{} y:{} w:{} h:{}'.format(x, y, w, h))
+    dprint('stride:{}'.format(stride))
+
+    if stride is None:
+        stride = framebuffer.width
+    dprint('new_stride:{}'.format(stride))
+    # get the height of the returned rect in bytes, including the partial striven bytes at the top/bottom border
+    h_bytes = ((y + h - 1) >> 3) - (y >> 3) + 1
+    dprint('h_bytes:{}'.format(h_bytes))
+
+    # advance is the offest to the next line
+    advance = stride >> 3
+    dprint('py_v_get_rect advance:{}'.format(advance))
+
+    start_byte = (y >> 3) * advance + x
+    dprint('py_v_get_rect start_byte:{}'.format(start_byte))
+    # The output buffer
+    vstr = bytearray()
+    for n in range(h_bytes):
+        vstr += buffer[start_byte : start_byte + w]
+        start_byte += advance
+    return vstr
+
 
 def check_rect_combinations(framebuffer, buffer):
     test_name = 'check_rect_combinations'
@@ -143,10 +185,15 @@ def check_get_rect(test_name, framebuffer, buffer, x, y, w, h, stride=None):
     print('frame_buf: w:{} h:{}'.format(framebuffer.width,framebuffer.height))
     print('check_rect: x:{} y:{} w:{} h:{} stride:{}'.format(x,y,w,h, stride))
     get_rect_res = framebuffer.get_rect(x, y, w, h)
-    if stride is None:
-        py_get_rect_res = get_rect(framebuffer, buffer, x, y, w, h)
+    if framebuffer.map_key == framebuf.MONO_VLSB:
+        get_rect_func = v_get_rect
     else:
-        py_get_rect_res = get_rect(framebuffer, buffer, x, y, w, h, stride)
+        get_rect_func = h_get_rect
+        
+    if stride is None:
+        py_get_rect_res = get_rect_func(framebuffer, buffer, x, y, w, h)
+    else:
+        py_get_rect_res = get_rect_func(framebuffer, buffer, x, y, w, h, stride)
     print(MAPS[map_key] + ' ' + test_name + ' C : {}'.format(get_rect_res))
     print(MAPS[map_key] + ' ' + test_name + ' Py: {}'.format(py_get_rect_res))
     assert get_rect_res == py_get_rect_res
@@ -154,8 +201,11 @@ def check_get_rect(test_name, framebuffer, buffer, x, y, w, h, stride=None):
 
 
 def get_test_buffer(width, height, map_key):
-    print('test_buffer_size: w:{} h:{}'.format(width, height))
-    buffer_size = (width // 8 + 1) * height
+    print('test_buffer_size: w:{} h:{} key:{}'.format(width, height, MAPS[map_key]))
+    if map_key == framebuf.MONO_VLSB:
+        buffer_size = width * (height // 8 + 1)
+    else:
+        buffer_size = (width // 8 + 1) * height
     buf = bytearray(range(buffer_size))
     print('test_buffer: {}'.format(buf))
     fbuf = FrameBuffer(buf, width, height, map_key)
