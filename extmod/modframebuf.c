@@ -172,24 +172,23 @@ STATIC mp_obj_t mvlsb_get_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsi
         The rectangle will be returned in the same order the buffer is aligned.
     */
 
-    // mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
+    mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
 
     // get the height of the returned rect in bytes, including the partial striven bytes at the top/bottom border
     unsigned int h_bytes = ((y + h - 1) >> 3) - (y >> 3) + 1;
-    // mp_printf(&mp_plat_print,"h_bytes=%d\n", h_bytes);
+    mp_printf(&mp_plat_print,"h_bytes=%d\n", h_bytes);
 
-    // advance is corrected by w_bytes since the shift into the next line will happen at the end of the line.
-    unsigned int stride_bytes = (fb->stride >> 3);
-    unsigned int advance = stride_bytes - w;
+    // advance is corrected by w since the shift into the next line will happen at the end of the line.
+    unsigned int advance = fb->stride - w;
 
-    // mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
-    // mp_printf(&mp_plat_print,"advance=%d\n", advance);
+    mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
+    mp_printf(&mp_plat_print,"advance=%d\n", advance);
     // The output buffer
     vstr_t vstr;
     // set length of output buffer to h_bytes x width
     vstr_init_len(&vstr, h_bytes * w);
     // get the first byte of the rectangle in the frame buffer
-    uint8_t *b = &((uint8_t *)fb->buf)[(y >> 3) * stride_bytes + x];
+    uint8_t *b = &((uint8_t *)fb->buf)[(y >> 3) * fb->stride + x];
     // get uint_8 pointer for the target buffer vstr.buf
     uint8_t *t = (uint8_t *)vstr.buf;
     while (h_bytes--) { // for 8 lines in parallel
