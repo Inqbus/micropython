@@ -172,17 +172,17 @@ STATIC mp_obj_t mvlsb_get_rect(const mp_obj_framebuf_t *fb, unsigned int x, unsi
         The rectangle will be returned in the same order the buffer is aligned.
     */
 
-    mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
+    // mp_printf(&mp_plat_print,"get_rect=%d %d %d %d\n", x, y, w, h);
 
     // get the height of the returned rect in bytes, including the partial striven bytes at the top/bottom border
     unsigned int h_bytes = ((y + h - 1) >> 3) - (y >> 3) + 1;
-    mp_printf(&mp_plat_print,"h_bytes=%d\n", h_bytes);
+    // mp_printf(&mp_plat_print,"h_bytes=%d\n", h_bytes);
 
     // advance is corrected by w since the shift into the next line will happen at the end of the line.
     unsigned int advance = fb->stride - w;
 
-    mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
-    mp_printf(&mp_plat_print,"advance=%d\n", advance);
+    // mp_printf(&mp_plat_print,"stride=%d\n", fb->stride);
+    // mp_printf(&mp_plat_print,"advance=%d\n", advance);
     // The output buffer
     vstr_t vstr;
     // set length of output buffer to h_bytes x width
@@ -358,7 +358,7 @@ STATIC void fill_rect(const mp_obj_framebuf_t *fb, int x, int y, int w, int h, u
 }
 
 STATIC mp_obj_t get_rect(const mp_obj_framebuf_t *fb, int x, int y, int w, int h) {
-    mp_printf(&mp_plat_print,"get_rect_init=%d %d %d %d\n", x, y, w, h);
+    // mp_printf(&mp_plat_print,"get_rect_init=%d %d %d %d\n", x, y, w, h);
 
     if (h < 1 || w < 1 || x + w <= 0 || y + h <= 0 || y >= fb->height || x >= fb->width) {
         // No operation needed.

@@ -10,7 +10,7 @@ if not 'get_rect' in dir(framebuf.FrameBuffer):
     print("SKIP")
     raise SystemExit
 
-DEBUG = True
+DEBUG = False
 
 # Maximal dimension for the framebuffer used
 WIDTH = 23
@@ -49,7 +49,7 @@ MAPS = {
 
 
 # debug print wrapper
-def dprint(str):
+def dprint(str=''):
     if DEBUG:
         print(str)
 
@@ -64,7 +64,6 @@ class FrameBufferTest(framebuf.FrameBuffer):
         self.buf = self.calc_buf()
         
         if stride is None: # ToDo: Cannot be None : Fix inconsitent stride calculation
-            sys.exit(1)
             super(FrameBufferTest, self).__init__(self.buf, width, height, map_key) 
         else:
             super(FrameBufferTest, self).__init__(self.buf, width, height, map_key, self.stride)
@@ -201,49 +200,51 @@ def check_range_overflow(map_key):
     # These have to be clipped and should return a valid result
     for x in BAD_X:
         c_res = framebuffer.get_rect(x, GOOD_Y_RANGE[GOOD_POINT_IDX], GOOD_WIDTH_RANGE[GOOD_POINT_IDX], GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
-        py_res = get_rect_func(framebuffer, buffer, x, GOOD_Y_RANGE[GOOD_POINT_IDX], GOOD_WIDTH_RANGE[GOOD_POINT_IDX], GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
+        py_res = get_rect_func(framebuffer, x, GOOD_Y_RANGE[GOOD_POINT_IDX], GOOD_WIDTH_RANGE[GOOD_POINT_IDX], GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
         assert c_res == py_res
 
     # These have to be clipped and should return a valid result
     for y in BAD_Y:
         c_res = framebuffer.get_rect(GOOD_X_RANGE[GOOD_POINT_IDX], y, GOOD_WIDTH_RANGE[GOOD_POINT_IDX], GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
-        py_res = get_rect_func(framebuffer, buffer, GOOD_X_RANGE[GOOD_POINT_IDX], y, GOOD_WIDTH_RANGE[GOOD_POINT_IDX], GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
+        py_res = get_rect_func(framebuffer, GOOD_X_RANGE[GOOD_POINT_IDX], y, GOOD_WIDTH_RANGE[GOOD_POINT_IDX], GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
         assert c_res == py_res
 
     # These have to return None
     for w in BAD_RANGE_WH:
         c_res = framebuffer.get_rect(GOOD_X_RANGE[GOOD_POINT_IDX], GOOD_Y_RANGE[GOOD_POINT_IDX], w, GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
-        py_res = get_rect_func(framebuffer, buffer, GOOD_X_RANGE[GOOD_POINT_IDX], GOOD_Y_RANGE[GOOD_POINT_IDX], w, GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
+        py_res = get_rect_func(framebuffer, GOOD_X_RANGE[GOOD_POINT_IDX], GOOD_Y_RANGE[GOOD_POINT_IDX], w, GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
         assert c_res == py_res == None
 
     # These have to return None
     for h in BAD_RANGE_WH:
         c_res = framebuffer.get_rect(GOOD_X_RANGE[GOOD_POINT_IDX], GOOD_Y_RANGE[GOOD_POINT_IDX], GOOD_WIDTH_RANGE[GOOD_POINT_IDX], h)
-        py_res = get_rect_func(framebuffer, buffer, GOOD_X_RANGE[GOOD_POINT_IDX], GOOD_Y_RANGE[GOOD_POINT_IDX], GOOD_WIDTH_RANGE[GOOD_POINT_IDX], h)
+        py_res = get_rect_func(framebuffer, GOOD_X_RANGE[GOOD_POINT_IDX], GOOD_Y_RANGE[GOOD_POINT_IDX], GOOD_WIDTH_RANGE[GOOD_POINT_IDX], h)
         assert c_res == py_res == None
 
 
 def check_stride(map_key):
 
-#    print('Good stride')
-#    for stride_offset in GOOD_STRIDE_OFFSET:
-#        stride = WIDTH + stride_offset
-#        framebuffer = FrameBufferTest(WIDTH, HEIGHT, map_key, stride=stride)
-#        check_rect_combinations(framebuffer)
+    dprint('Good stride')
+    for stride_offset in GOOD_STRIDE_OFFSET:
+        stride = WIDTH + stride_offset
+        dprint('Good map_key:{} stride:{}'.format(map_key, stride))
+        framebuffer = FrameBufferTest(WIDTH, HEIGHT, map_key, stride=stride)
+        check_rect_combinations(framebuffer)
 
+    dprint('Bad stride')
     for stride_offset in BAD_STRIDE_OFFSET:
         stride = WIDTH + stride_offset
-        print('Bad map_key:{} stride:{}'.format(map_key, stride))
+        dprint('Bad map_key:{} stride:{}'.format(map_key, stride))
         framebuffer = FrameBufferTest(WIDTH, HEIGHT, map_key, stride=stride)
         check_rect_combinations(framebuffer)
 
 
 def check_rect_combinations(framebuffer):
     test_name = 'check_rect_combinations'
-    print('='*50)
-    print(MAPS[map_key] + ' ' + test_name)
-    print('='*50)
-    print()
+    dprint('='*50)
+    dprint(MAPS[map_key] + ' ' + test_name)
+    dprint('='*50)
+    dprint()
 
     for x in GOOD_WIDTH_RANGE:
         check_get_rect('x varying', framebuffer, x, GOOD_Y_RANGE[GOOD_POINT_IDX], GOOD_WIDTH_RANGE[GOOD_POINT_IDX], GOOD_HEIGHT_RANGE[GOOD_POINT_IDX])
@@ -263,16 +264,16 @@ def get_get_rect_func(map_key):
 
                     
 def check_get_rect(test_name, framebuffer, x, y, w, h,):
-    print('frame_buf: w:{} h:{}'.format(framebuffer.width, framebuffer.height))
-    print('check_rect: x:{} y:{} w:{} h:{} stride:{}'.format(x,y,w,h, framebuffer.stride))
+    dprint('frame_buf: w:{} h:{}'.format(framebuffer.width, framebuffer.height))
+    dprint('check_rect: x:{} y:{} w:{} h:{} stride:{}'.format(x,y,w,h, framebuffer.stride))
     get_rect_res = framebuffer.get_rect(x, y, w, h)
     py_get_rect_res = get_get_rect_func(framebuffer.map_key)(framebuffer, x, y, w, h)
-    print(MAPS[map_key] + ' ' + test_name + ' C : {}'.format(get_rect_res))
-    print(MAPS[map_key] + ' ' + test_name + ' Py: {}'.format(py_get_rect_res))
+    dprint(MAPS[map_key] + ' ' + test_name + ' C : {}'.format(get_rect_res))
+    dprint(MAPS[map_key] + ' ' + test_name + ' Py: {}'.format(py_get_rect_res))
     
     if get_rect_res != py_get_rect_res:
         print('Error!')
-        print('Framebuffer:')
+        print('Framebuffer.get_rect:')
         print(v_bytes2bin(framebuffer.buf, framebuffer.width, framebuffer.height, framebuffer.stride))
         print('Rect C')
         print(v_bytes2bin(get_rect_res, w, h))
@@ -292,7 +293,7 @@ def check_buf_size(map_key):
 def v_bytes2bin(byts, width, height, stride=None):
     if stride is None:
         stride = width
-    print('w:{} h:{} stride:{}'.format(width, height, stride))
+    dprint('w:{} h:{} stride:{}'.format(width, height, stride))
     h_bytes = (((len(byts) * 8) // stride - 1) >> 3) + 1
     offset = 0
     msg = '\n'
@@ -308,22 +309,23 @@ def v_bytes2bin(byts, width, height, stride=None):
         offset += stride
     return msg
 
-#framebuffer = FrameBufferTest(23, 29, framebuf.MONO_VLSB, stride=22)
-#print(v_bytes2bin(framebuffer.buf, 23, 29))
 
-#sys.exit(1)
+print('Testing FrameBuffer.get_rect()')
 
 for map_key in MAPS:
-    print('#'*50)
-    print(MAPS[map_key])
-    print('#'*50)
-    print()
+    dprint('#'*50)
+    dprint(MAPS[map_key])
+    dprint('#'*50)
+    dprint()
 
     # Check stride problems
     check_stride(map_key)
 
     # Testing impossible coordinates
-#    check_range_overflow(map_key)
+    check_range_overflow(map_key)
     
     # test for different buffer sizes        
-#    check_buf_size(map_key)
+    check_buf_size(map_key)
+    
+    
+print('Testing FrameBuffer.get_rect() done')
